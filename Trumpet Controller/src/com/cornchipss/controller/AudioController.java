@@ -1,6 +1,5 @@
 package com.cornchipss.controller;
 
-import java.awt.AWTException;
 import java.awt.MouseInfo;
 import java.awt.Robot;
 import java.awt.event.InputEvent;
@@ -24,11 +23,10 @@ import be.tarsos.dsp.pitch.PitchProcessor.PitchEstimationAlgorithm;
 
 /**
  * Controls your keyboard/mouse using audio from a microphone.
- * @author Cornchip
  */
 public class AudioController
 {
-	public static void main(String[] args) throws LineUnavailableException, IOException, AWTException
+	public static void main(String[] args) throws Exception
 	{
 		final Map<Integer, String> values = new HashMap<>();
 		
@@ -39,15 +37,15 @@ public class AudioController
 		 */
 		readPitches(values);
 		
-		// Handles key/mouse outputs (beep bop)
+		// Handles key/mouse outputs
 		Robot robot = new Robot();
 		
 		// Displays the audio to be seen by the user
 		AudioGraph graph = new AudioGraph();
 		
-		final int SAMPLE_RATE = 48100;
+		final int SAMPLE_RATE = 8000; // 48k is great for normal recordings, but 8000 is good enough for pitch detection
 		
-		AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, true); //48k is great for voices and such, but 8000 is good enough for pitch detection
+		AudioFormat format = new AudioFormat(SAMPLE_RATE, 16, 1, true, true);
 		
 		DataLine.Info info = new DataLine.Info(TargetDataLine.class, format);
 		
@@ -72,45 +70,48 @@ public class AudioController
 					int[] lastKeysPressed = new int[0];
 					String lastKeyCode = "";
 		    		
+					// YIN is good for the frequencies trumpets make
+			    	PitchDetector detector = PitchEstimationAlgorithm.YIN.getDetector(SAMPLE_RATE, SAMPLE_RATE / 2);
+			    	TarsosDSPAudioFloatConverter converter = TarsosDSPAudioFloatConverter.getConverter(JVMAudioInputStream.toTarsosDSPFormat(format));
+					
+			    	long lastMillis = System.currentTimeMillis();
+			    	
+			    	// These are declared here so they're not deleted & re-allocated every time
+			    	float[] micDataFloats = new float[SAMPLE_RATE / 2];
+			    	byte[] micDataBytes = new byte[SAMPLE_RATE];
+			    	
 					while(true)
 					{
-						byte[] byteBuf = new byte[(int)format.getSampleRate() * format.getFrameSize() / 2];
-						
-					    int amtRead = line.read(byteBuf, 0, byteBuf.length);
+					    int amtRead = line.read(micDataBytes, 0, SAMPLE_RATE);
+					    
+					    long deltaTime = System.currentTimeMillis() - lastMillis;
+					    lastMillis = System.currentTimeMillis();
 					    
 					    if(amtRead > 0)
 					    {
-					    	// Converts stupid bytes to nice lovely floats
-					    	float[] floats = new float[byteBuf.length / 2];
+					    	// Converts stupid bytes to nice lovely floats					    	
+					    	converter.toFloatArray(micDataBytes, micDataFloats);
 					    	
-					    	PitchDetector detector = PitchEstimationAlgorithm.YIN.getDetector(SAMPLE_RATE, floats.length);
+					    	// Graphs the data so its nice and see-able
+					    	graph.setData(micDataFloats);
 					    	
-					    	TarsosDSPAudioFloatConverter converter = TarsosDSPAudioFloatConverter.getConverter(JVMAudioInputStream.toTarsosDSPFormat(format));
+					    	// Then gets their pitch using math i don't understand
+					    	int pitch = Math.round(detector.getPitch(micDataFloats).getPitch());
 					    	
-					    	converter.toFloatArray(byteBuf, floats);
-					    	
-					    	graph.setData(floats);
-					    	
-					    	// Then gets their pitch using math i dont understand
-					    	int pitch = Math.round(detector.getPitch(floats).getPitch());
-					    	
-							if(pitch != -1 && pitch != 11) // idk why, but it says 11 a lot for no reason and -1 means it has no idea the pitch
+							if(pitch != -1 && pitch != 11) // idk why, but it says 11 a lot for no reason and -1 means it has no idea what the pitch is
 							{
 								System.out.println("Pitch: " + pitch);
 								
-								for(int p : values.keySet())
+								for(int target : values.keySet())
 								{
-									if(p - 10 <= pitch && pitch <= p + 10) // A threshold of 10 is decent for most notes (this isn't good for high/low notes tho and im too lazy to make it dynamic)
+									if(isPitchEqual(pitch, target)) // A threshold of 10 is decent for most notes (this isn't good for high/low notes
 									{
-										String key = values.get(p);
-										
-										final long MILLIS_BETWEEN_MEASURES = 1000 / 3; // 3 measurements per second is a good guesstimate
-										
+										String key = values.get(target);
+										System.out.println("press: " + key);
 										boolean sameKey = key.equals(lastKeyCode);
 										
 										if(!sameKey)
 										{
-											System.out.println(key);
 											if(lastKeysPressed.length != 0)
 											{
 												for(int k : lastKeysPressed)
@@ -129,22 +130,22 @@ public class AudioController
 										{
 											case "v":
 											{
-												moveMouse(0, 2, MILLIS_BETWEEN_MEASURES, robot);
+												moveMouse(0, 2, deltaTime, robot);
 												break;
 											}
 											case ">":
 											{
-												moveMouse(2, 0, MILLIS_BETWEEN_MEASURES, robot);
+												moveMouse(2, 0, deltaTime, robot);
 												break;
 											}
 											case "<":
 											{
-												moveMouse(-2, 0, MILLIS_BETWEEN_MEASURES, robot);
+												moveMouse(-2, 0, deltaTime, robot);
 												break;
 											}
 											case "^":
 											{
-												moveMouse(0, -2, MILLIS_BETWEEN_MEASURES, robot);
+												moveMouse(0, -2, deltaTime, robot);
 												break;
 											}
 											case "lmb":
@@ -214,6 +215,16 @@ public class AudioController
 					    }
 					}
 		    	}
+
+				private boolean isPitchEqual(int pitch, int target)
+				{
+					int octave = (int) Math.floor(Math.log(pitch) / Math.log(2)) - 4;
+					
+					// The distance between notes grows with each octave
+					double threshold = Math.pow(2, octave) / 2;
+										
+					return pitch - threshold <= target && target <= pitch + threshold;
+				}
 		    }.start();
 		}
 		catch (LineUnavailableException ex)
@@ -223,18 +234,46 @@ public class AudioController
 		}
 	}
 	
-	private static void readPitches(Map<Integer, String> values) throws IOException
+	/**
+	 * Reads the YML file of pitches
+	 * @param values Where to store this stuff
+	 * @throws IOException If something bad happens when reading the files
+	 */
+	private static void readPitches(Map<Integer, String> values)
 	{
-		BufferedReader br = new BufferedReader(new FileReader("pitches.yml"));
-		for(String line = br.readLine(); line != null; line = br.readLine())
+		try
 		{
-			String[] split = line.split(":");
-			if(split.length == 2)
-				values.put(Integer.parseInt(split[0]), split[1]);
+			BufferedReader br = new BufferedReader(new FileReader("pitches.yml"));
+			for(String line = br.readLine(); line != null; line = br.readLine())
+			{
+				String[] split = line.split(":");
+				if(split.length == 2)
+				{
+					if(split[0].trim().charAt(0) != '#')
+					{				
+						String data = split[1];
+						if(data.contains(" #"))
+							data = data.substring(0, data.indexOf(" #"));
+						
+						values.put(Integer.parseInt(split[0]), data);
+					}
+				}
+			}
+			br.close();
 		}
-		br.close();
+		catch(Exception ex)
+		{
+			ex.printStackTrace();
+		}
 	}
-
+	
+	/**
+	 * Moves the mouse a given delta x and delta y over a given period of time
+	 * @param x delta X
+	 * @param y delta Y
+	 * @param millis Time to move it
+	 * @param robot The robot to execute this command
+	 */
 	private static void moveMouse(int x, int y, long millis, Robot robot)
 	{
 		new Thread()
@@ -253,7 +292,7 @@ public class AudioController
 					
 					try
 					{
-						Thread.sleep(10); // 10 is a nice amount to sleep to move the mouse not too much but not too little
+						Thread.sleep(15); // 15 is a nice amount to sleep to move the mouse not too much but not too little
 					}
 					catch (InterruptedException e)
 					{

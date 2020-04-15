@@ -128,24 +128,18 @@ public class AudioGraph extends JFrame implements KeyListener
 		}
 	}
 	
-	// This stuff below was used for testing please ignore
-	public static final boolean[] keys = new boolean[255];
-	
 	@Override
 	public void keyPressed(KeyEvent e)
 	{
-		keys[e.getKeyCode()] = true;
 	}
 
 	@Override
 	public void keyReleased(KeyEvent e)
 	{
-		keys[e.getKeyCode()] = false;
 	}
 
 	@Override
 	public void keyTyped(KeyEvent e)
 	{
-		
 	}
 }

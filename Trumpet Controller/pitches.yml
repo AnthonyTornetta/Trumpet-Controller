@@ -1,16 +1,18 @@
-580:W+ +R
-520: 
-470:W
-440:S
-410:D
-370:A
+587:W+ +R # E
+523:  # D
+466:W # C
+440:S # B
+410:D # A
+370:A # G
 
-350:LMB
-630:RMB
+340:LMB # G
+650:RMB # F#^
 
-330:E
+324:E # F#
 
-200:<
-230:>
-260:^
-300:v
+200:< # Bb
+230:> # C
+261:^ # D
+293:v # E
+
+# https://en.wikipedia.org/wiki/Scientific_pitch_notation
